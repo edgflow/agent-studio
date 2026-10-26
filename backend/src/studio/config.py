@@ -21,6 +21,21 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     session_hours: int = 12
 
+    # Fernet keys that encrypt stored OAuth tokens: comma-separated, newest first.
+    # Without one, connections are switched off. Make a key with Fernet.generate_key()
+    # (the command is in .env.example).
+    token_encryption_keys: str | None = None
+
+    # A GitHub OAuth app (github.com/settings/developers), with the callback URL
+    # {app_url}/api/connections/github/callback.
+    github_client_id: str | None = None
+    github_client_secret: str | None = None
+
+    # The local OAuth provider in devtools/oauth_provider.py, for development and demos.
+    dev_oauth_url: str | None = None  # e.g. http://127.0.0.1:8010
+    dev_oauth_client_id: str = "agent-studio-dev"
+    dev_oauth_client_secret: str | None = None
+
     # Optional: lets "llm" nodes call OpenAI. Workflows without them run without it.
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.4-mini"

@@ -36,6 +36,7 @@ module-name = "studio"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # so tests can import devtools/
 addopts = "-q"
 
 [tool.ruff]

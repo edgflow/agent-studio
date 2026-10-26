@@ -62,3 +62,9 @@ tables before every test.
   New members join through single-use invitation links that expire after 7 days.
 - Sign-in and invitations are rate limited in memory, per process. Use a shared
   store (Redis) behind `studio/ratelimit.py` before running several workers.
+- OAuth connections (`studio/routes/connections.py`) use the authorization code
+  flow with PKCE and a fixed redirect URI. Tokens are encrypted with
+  `TOKEN_ENCRYPTION_KEYS` (Fernet, rotatable) and never leave the backend.
+  Disconnecting revokes the token at the provider. For local work without a
+  GitHub OAuth app, run the test provider in `backend/devtools/` (see
+  `.env.example`). Workflows refuse to store anything that looks like a credential.

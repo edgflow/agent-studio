@@ -4,7 +4,7 @@ Roles are ordered: each one can do everything the roles below it can.
 
     viewer  open workflows, their history and their runs
     editor  + create and save workflows, restore revisions, start and cancel runs
-    admin   + delete workflows, manage members, read the project's audit log
+    admin   + delete workflows, manage members and shared connections, read the audit log
     owner   + delete the project, make other owners
 """
 
@@ -34,6 +34,7 @@ class Permission(StrEnum):
     RUN = "run"
     DELETE_WORKFLOW = "delete_workflow"
     MANAGE_MEMBERS = "manage_members"
+    MANAGE_CONNECTIONS = "manage_connections"
     VIEW_AUDIT = "view_audit"
     DELETE_PROJECT = "delete_project"
 
@@ -45,6 +46,7 @@ MINIMUM_ROLE: dict[Permission, Role] = {
     Permission.RUN: Role.EDITOR,  # runs call paid models
     Permission.DELETE_WORKFLOW: Role.ADMIN,
     Permission.MANAGE_MEMBERS: Role.ADMIN,
+    Permission.MANAGE_CONNECTIONS: Role.ADMIN,
     Permission.VIEW_AUDIT: Role.ADMIN,
     Permission.DELETE_PROJECT: Role.OWNER,
 }

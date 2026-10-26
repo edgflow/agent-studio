@@ -18,7 +18,15 @@ from studio.permissions import Permission, Role, allows
 EXPECTED = {
     Role.VIEWER: {"view"},
     Role.EDITOR: {"view", "edit", "run"},
-    Role.ADMIN: {"view", "edit", "run", "delete_workflow", "manage_members", "view_audit"},
+    Role.ADMIN: {
+        "view",
+        "edit",
+        "run",
+        "delete_workflow",
+        "manage_members",
+        "manage_connections",
+        "view_audit",
+    },
     Role.OWNER: {p.value for p in Permission},
 }
 

@@ -9,6 +9,7 @@ import os
 import uuid
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, text
 
 ADMIN_URL = os.environ.get(
@@ -20,6 +21,10 @@ TEST_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB}"
 
 # Point the application at the test database before any studio module is imported.
 os.environ["DATABASE_URL"] = TEST_URL
+# A fresh encryption key per run, and the local OAuth provider (see the `provider` fixture).
+os.environ["TOKEN_ENCRYPTION_KEYS"] = Fernet.generate_key().decode()
+os.environ["DEV_OAUTH_URL"] = "http://oauth.test"
+os.environ["DEV_OAUTH_CLIENT_SECRET"] = "test-only-secret"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -60,6 +65,21 @@ def fresh_rate_limits():
     from studio.ratelimit import limiter
 
     limiter.reset()
+
+
+@pytest.fixture
+def provider(monkeypatch):
+    """The local OAuth provider, answering every call the backend makes to a provider.
+    The returned client plays the person's browser on the provider's pages."""
+    from fastapi.testclient import TestClient
+
+    from devtools import oauth_provider
+    from studio import providers
+
+    oauth_provider.codes.clear()
+    oauth_provider.tokens.clear()
+    monkeypatch.setattr(providers, "http", lambda: TestClient(oauth_provider.app))
+    return TestClient(oauth_provider.app)
 
 
 @pytest.fixture

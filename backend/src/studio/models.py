@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    LargeBinary,
     String,
     UniqueConstraint,
     func,
@@ -199,6 +200,79 @@ class Execution(Base):
     cancel_requested: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = now_column()
     finished_at: Mapped[datetime | None]
+
+
+class OAuthState(Base):
+    """One authorization in flight, from "Connect" until the provider sends the user back.
+
+    The `state` sent to the provider is random and stored only as a hash. The callback
+    must bring it back, from the same signed-in user, within ten minutes, and only
+    once. It also keeps the PKCE verifier (encrypted) until the code is exchanged.
+    """
+
+    __tablename__ = "oauth_states"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    provider: Mapped[str] = mapped_column(String(20))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    code_verifier: Mapped[bytes] = mapped_column(LargeBinary)  # encrypted
+    created_at: Mapped[datetime] = now_column()
+    expires_at: Mapped[datetime]
+
+
+class Connection(Base):
+    """An account at an OAuth provider that workflows can act as.
+
+    Personal (user_id set): only its owner sees and uses it. Shared (project_id set):
+    the project's members can see it, its admins manage it. Tokens are encrypted and
+    never leave the backend.
+    """
+
+    __tablename__ = "connections"
+    __table_args__ = (
+        CheckConstraint("(user_id IS NULL) <> (project_id IS NULL)", name="connection_owner"),
+        CheckConstraint("status IN ('active', 'invalid')", name="connection_status"),
+        # One connection per provider for each person, and for each project.
+        Index(
+            "uq_connections_personal",
+            "provider",
+            "user_id",
+            unique=True,
+            postgresql_where="user_id IS NOT NULL",
+        ),
+        Index(
+            "uq_connections_shared",
+            "provider",
+            "project_id",
+            unique=True,
+            postgresql_where="project_id IS NOT NULL",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"))
+    provider: Mapped[str] = mapped_column(String(20))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    account_id: Mapped[str] = mapped_column(String(64))
+    account_login: Mapped[str] = mapped_column(String(100))
+    scopes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    access_token: Mapped[bytes] = mapped_column(LargeBinary)  # encrypted
+    refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary)  # encrypted
+    expires_at: Mapped[datetime | None]
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = now_column()
+    last_checked_at: Mapped[datetime | None]
 
 
 class AuditEvent(Base):

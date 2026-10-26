@@ -1,10 +1,21 @@
 """The workflow graph format: React Flow nodes and edges, validated on every save."""
 
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 NodeType = Literal["input", "template", "llm", "output"]
+
+
+# Credentials don't belong in a workflow: everyone in the project can read the graph,
+# and every revision keeps a copy forever. They belong in a connection.
+_SECRET_KEY = re.compile(
+    r"passw|secret|token|api.?key|authori[sz]ation|credential|private.?key", re.IGNORECASE
+)
+_SECRET_VALUE = re.compile(
+    r"gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[\w-]{20,}|xox[abpr]-[\w-]{10,}|AKIA[0-9A-Z]{16}"
+)
 
 
 class Position(BaseModel):
@@ -18,6 +29,17 @@ class Node(BaseModel):
     position: Position
     # Node settings, e.g. {"template": "Summarize: {input}"} or {"model": "gpt-5.4-mini"}.
     data: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("data")
+    @classmethod
+    def no_secrets(cls, data: dict[str, Any]) -> dict[str, Any]:
+        for key, value in data.items():
+            if _SECRET_KEY.search(key) or (isinstance(value, str) and _SECRET_VALUE.search(value)):
+                raise ValueError(
+                    f"'{key}' looks like a credential. Workflows are visible to the whole "
+                    "project and kept in every revision: use a connection instead"
+                )
+        return data
 
 
 class Edge(BaseModel):
