@@ -60,3 +60,12 @@ export type AuditDetail = AuditItem & {
   metadata: Record<string, unknown>;
 };
 export type AuditList = { items: AuditItem[]; total: number; limit: number; offset: number };
+
+export type Member = {
+  user_id: string;
+  display_name: string;
+  email: string | null; // only for people who manage members
+  role: Role;
+  added_at: string;
+};
+export type Invitation = { id: string; email: string; role: Role; created_at: string; expires_at: string };

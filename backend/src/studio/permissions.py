@@ -59,9 +59,30 @@ def permissions_of(role: Role) -> list[Permission]:
     return [p for p in Permission if allows(role, p)]
 
 
+def can_change_role(actor: Role, current: Role, new: Role) -> bool:
+    """Admins manage admins, editors and viewers. Only owners give or take ownership."""
+    if actor == Role.OWNER:
+        return True
+    return actor == Role.ADMIN and Role.OWNER not in (current, new)
+
+
 def role_in(db: Session, user: User, project_id: uuid.UUID) -> Role | None:
-    member = db.get(ProjectMember, (project_id, user.id))
+    # populate_existing: always read the row again, never trust a copy from earlier
+    # in this transaction (it may be stale after waiting for a lock).
+    member = db.get(ProjectMember, (project_id, user.id), populate_existing=True)
     return Role(member.role) if member else None
+
+
+def deny(user: User, target: audit.Target, permission: str, role: Role, message: str) -> None:
+    """Records the refusal, then raises 403."""
+    audit.record_now(
+        "permission.denied",
+        user,
+        target=target,
+        outcome="denied",
+        details={"permission": permission, "role": role.value},
+    )
+    raise HTTPException(403, message)
 
 
 def authorize(
@@ -81,14 +102,11 @@ def authorize(
     if role is None:
         raise HTTPException(404, not_found)
     if not allows(role, permission):
-        audit.record_now(
-            "permission.denied",
+        deny(
             user,
-            target=target or audit.Target.of(project),
-            outcome="denied",
-            details={"permission": permission.value, "role": role.value},
-        )
-        raise HTTPException(
-            403, f"your role in this project ({role}) doesn't allow this ({permission})"
+            target or audit.Target.of(project),
+            permission.value,
+            role,
+            f"your role in this project ({role}) doesn't allow this ({permission})",
         )
     return role

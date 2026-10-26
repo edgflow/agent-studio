@@ -106,6 +106,43 @@ class ProjectMember(Base):
     )
 
 
+class Invitation(Base):
+    """An offer to join a project, delivered as a link.
+
+    Only a hash of the link's token is stored. An invitation expires, works once,
+    can be revoked, and only the account with the invited email can accept it.
+    """
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'editor', 'viewer')", name="invitation_role"),
+        # At most one open invitation per address and project.
+        Index(
+            "uq_invitations_open",
+            "project_id",
+            "email",
+            unique=True,
+            postgresql_where="accepted_at IS NULL AND revoked_at IS NULL",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    email: Mapped[str] = mapped_column(String(320))  # lower-case
+    role: Mapped[str] = mapped_column(String(10))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = now_column()
+    expires_at: Mapped[datetime]
+    accepted_at: Mapped[datetime | None]
+    accepted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None]
+
+
 class Workflow(Base):
     """A visual workflow: React Flow nodes and edges, stored as JSON."""
 

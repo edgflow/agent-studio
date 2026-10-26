@@ -73,6 +73,13 @@ def seed() -> None:
                 display_name="Carol",
                 password_hash=password,
             ),
+            # In Acme, but in no project yet: the one to invite.
+            "erin": User(
+                org_id=acme.id,
+                email="erin@acme.test",
+                display_name="Erin",
+                password_hash=password,
+            ),
             "dave": User(
                 org_id=globex.id,
                 email="dave@globex.test",

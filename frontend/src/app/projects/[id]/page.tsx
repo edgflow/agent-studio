@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { AuditLog } from "@/components/audit/AuditLog";
+import { Members } from "@/components/project/Members";
 import { api } from "@/lib/api";
 import type { Project, WorkflowSummary } from "@/lib/types";
 
@@ -13,6 +15,7 @@ function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [name, setName] = useState("");
+  const [tab, setTab] = useState<"workflows" | "members" | "activity">("workflows");
 
   useEffect(() => {
     api<Project>(`/api/projects/${id}`).then(setProject);
@@ -31,13 +34,25 @@ function ProjectPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl p-8">
+    <div className={`mx-auto w-full p-8 ${tab === "activity" ? "max-w-6xl" : "max-w-3xl"}`}>
       <Link href="/" className="text-sm text-muted hover:text-text">← Projects</Link>
       <h1 className="mb-6 mt-2 flex items-baseline gap-3 text-2xl font-bold">
         {project?.name}
         {project && <span className="text-sm font-normal text-muted">your role: {project.role}</span>}
       </h1>
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted">Workflows</h2>
+      <div className="mb-4 flex gap-1 border-b border-border text-sm">
+        {(["workflows", "members", "activity"] as const)
+          .filter((t) => t !== "activity" || project?.permissions.includes("view_audit"))
+          .map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`-mb-px border-b-2 px-3 py-2 capitalize ${tab === t ? "border-teal" : "border-transparent text-muted"}`}>
+              {t}
+            </button>
+          ))}
+      </div>
+      {project && tab === "members" && <Members project={project} />}
+      {project && tab === "activity" && <AuditLog projectId={project.id} />}
+      {tab === "workflows" && <>
       <ul className="space-y-2">
         {workflows.map((w) => (
           <li key={w.id}>
@@ -56,6 +71,7 @@ function ProjectPage() {
           <button className="rounded bg-teal px-4 font-semibold text-canvas">Create</button>
         </form>
       )}
+      </>}
     </div>
   );
 }

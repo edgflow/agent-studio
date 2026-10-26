@@ -12,7 +12,8 @@ from studio import audit
 from studio.config import get_settings
 from studio.db import Db
 from studio.models import AuthSession, User
-from studio.security import hash_token, new_session_token, verify_password
+from studio.ratelimit import limiter
+from studio.security import hash_token, new_token, verify_password
 
 COOKIE = "studio_session"
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -66,6 +67,9 @@ def login(body: LoginRequest, request: Request, response: Response, db: Db) -> U
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     # Sign-ins are the one place an IP address earns its keep: spotting password guessing.
     ip = request.client.host if request.client else None
+    # Slow down password guessing: per address and account, and per address overall.
+    limiter.check(f"login:{ip}:{body.email.lower()}", limit=10, window=15 * 60)
+    limiter.check(f"login:{ip}", limit=100, window=15 * 60)
     if not verify_password(user.password_hash if user else None, body.password):
         # Filed under the account that was tried. Never the password, and never the typed
         # email of an unknown account: people sometimes type their password into that field.
@@ -80,7 +84,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Db) -> U
         # The same message for an unknown email and a wrong password.
         raise HTTPException(401, "wrong email or password")
     settings = get_settings()
-    token = new_session_token()
+    token = new_token()
     db.add(
         AuthSession(
             token_hash=hash_token(token),

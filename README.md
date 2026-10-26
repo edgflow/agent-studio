@@ -22,8 +22,10 @@ npm install
 npm run dev                                # http://localhost:3000
 ```
 
-Demo users: `alice@acme.test` (organization admin), `bob@acme.test` and
-`carol@acme.test` in **Acme AI**; `dave@globex.test` in **Globex**, a separate tenant.
+Demo users in **Acme AI**: `alice@acme.test` (organization admin, owner of
+Support Bot), `bob@acme.test` (editor), `carol@acme.test` (viewer) and
+`erin@acme.test` (in no project yet). `dave@globex.test` is in **Globex**, a
+separate tenant.
 
 ## Test it
 
@@ -54,3 +56,9 @@ tables before every test.
   Organization admins read it at `/audit` and can export CSV. In production, run
   the app as a database role that does not own `audit_events`, so the
   append-only trigger can't be switched off from the app.
+- Project access comes only from `project_members` (owner, admin, editor,
+  viewer). The rules live in `studio/permissions.py`; non-members get `404`,
+  members whose role is too low get `403` and a `permission.denied` audit event.
+  New members join through single-use invitation links that expire after 7 days.
+- Sign-in and invitations are rate limited in memory, per process. Use a shared
+  store (Redis) behind `studio/ratelimit.py` before running several workers.

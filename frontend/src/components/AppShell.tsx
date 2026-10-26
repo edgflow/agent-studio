@@ -19,7 +19,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     api<User>("/api/auth/me")
       .then(setUser)
       .catch((e) => {
-        if (e instanceof ApiError && e.status === 401) router.replace("/login");
+        // Come back here after signing in (the path only: never the query or #fragment).
+        if (e instanceof ApiError && e.status === 401) {
+          router.replace(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+        }
       });
   }, [router]);
 

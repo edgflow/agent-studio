@@ -5,6 +5,13 @@ import { useState } from "react";
 
 import { ApiError, api } from "@/lib/api";
 
+/** Where to go after signing in. Only a path on this site: "?next=//evil.test" or
+ *  "?next=https://evil.test" would turn our login page into a link to someone else's. */
+function nextPath(): string {
+  const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+  return next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("alice@acme.test");
@@ -16,7 +23,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await api("/api/auth/login", { method: "POST", json: { email, password } });
-      router.replace("/");
+      router.replace(nextPath());
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not sign in");
     }

@@ -25,12 +25,13 @@ def verify_password(password_hash: str | None, password: str) -> bool:
         return False
 
 
-def new_session_token() -> str:
+def new_token() -> str:
+    """256 random bits, URL-safe. For session cookies and invitation links."""
     return secrets.token_urlsafe(32)
 
 
 def hash_token(token: str) -> str:
-    """Session tokens are stored as SHA-256: a leaked table can't be replayed."""
+    """Tokens are stored as SHA-256: a leaked table can't be replayed."""
     return hashlib.sha256(token.encode()).hexdigest()
 
 

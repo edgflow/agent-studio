@@ -55,6 +55,13 @@ def clean_tables(database):
     yield
 
 
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    from studio.ratelimit import limiter
+
+    limiter.reset()
+
+
 @pytest.fixture
 def seeded():
     """The demo organizations, users, project and workflow."""

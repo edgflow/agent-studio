@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # PostgreSQL, as a SQLAlchemy URL: postgresql+psycopg://user:pass@host:port/db
     database_url: str = "postgresql+psycopg://studio:studio@127.0.0.1:55433/studio"
 
+    # Where the frontend lives; links in invitations point here.
+    app_url: str = "http://localhost:3000"
+
     # Browser origins allowed to call the API with the session cookie.
     allowed_origins: list[str] = ["http://localhost:3000"]
 

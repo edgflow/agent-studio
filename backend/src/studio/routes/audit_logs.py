@@ -1,7 +1,8 @@
 """Reading the audit trail: search, filter, sort, page through, open one event, export.
 
 Everything is filtered, sorted and paged in the database, and every query is
-scoped to the caller's organization before any filter is applied.
+scoped to the caller's organization before any filter is applied. Organization
+admins read everything; a project's owners and admins read that project's events.
 """
 
 import csv
@@ -11,7 +12,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import Select, func, or_, select
 
@@ -19,19 +20,22 @@ from studio import audit
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.models import AuditEvent, Project, User
+from studio.permissions import Permission
+from studio.routes.projects import get_project
 
 router = APIRouter(prefix="/api/audit-logs", tags=["audit"])
 
 EXPORT_LIMIT = 10_000
 
 
-def org_admin(user: CurrentUser) -> User:
-    if not user.is_org_admin:
-        raise HTTPException(403, "only organization admins can read the audit log")
-    return user
-
-
-OrgAdmin = Annotated[User, Depends(org_admin)]
+def may_read(db: Db, user: User, project_id: uuid.UUID | None) -> None:
+    """Organization admins read the whole organization's trail. A project's owners and
+    admins read that project's events, and only those."""
+    if user.is_org_admin:
+        return
+    if project_id is None:
+        raise HTTPException(403, "only organization admins can read the whole audit log")
+    get_project(db, user, project_id, Permission.VIEW_AUDIT)
 
 
 class AuditFilters(BaseModel):
@@ -135,7 +139,8 @@ def matching(user: User, f: AuditFilters) -> Select:
 
 
 @router.get("")
-def list_events(db: Db, user: OrgAdmin, page: Annotated[AuditPage, Query()]) -> AuditList:
+def list_events(db: Db, user: CurrentUser, page: Annotated[AuditPage, Query()]) -> AuditList:
+    may_read(db, user, page.project_id)  # a project filter is also the project's boundary
     query = matching(user, page)
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     column = getattr(AuditEvent, page.sort)
@@ -155,7 +160,8 @@ def list_events(db: Db, user: OrgAdmin, page: Annotated[AuditPage, Query()]) -> 
 
 # Declared before /{event_id}, which would otherwise try to read "export" as an id.
 @router.get("/export")
-def export_events(db: Db, user: OrgAdmin, filters: Annotated[AuditFilters, Query()]) -> Response:
+def export_events(db: Db, user: CurrentUser, filters: Annotated[AuditFilters, Query()]) -> Response:
+    may_read(db, user, filters.project_id)
     rows = db.execute(
         matching(user, filters)
         .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
@@ -207,7 +213,7 @@ def safe_cell(value: object) -> str:
 
 
 @router.get("/{event_id}")
-def read_event(event_id: uuid.UUID, db: Db, user: OrgAdmin) -> AuditDetail:
+def read_event(event_id: uuid.UUID, db: Db, user: CurrentUser) -> AuditDetail:
     row = db.execute(
         select(AuditEvent, Project.name)
         .outerjoin(Project, Project.id == AuditEvent.project_id)
@@ -216,6 +222,7 @@ def read_event(event_id: uuid.UUID, db: Db, user: OrgAdmin) -> AuditDetail:
     if row is None:
         raise HTTPException(404, "event not found")
     e, project = row
+    may_read(db, user, e.project_id)
     return AuditDetail(
         **AuditItem.of(e, project).model_dump(),
         request_id=e.request_id,
