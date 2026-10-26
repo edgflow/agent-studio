@@ -19,6 +19,7 @@ export type Workflow = {
   project_id: string;
   name: string;
   graph: Graph;
+  revision: number;
   updated_at: string;
   updated_by: string;
 };
@@ -26,6 +27,7 @@ export type Workflow = {
 export type Execution = {
   id: string;
   workflow_id: string;
+  revision: number | null;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   input: string;
   output: string | null;

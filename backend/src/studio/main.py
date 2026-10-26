@@ -3,7 +3,7 @@
 from fastapi import Depends, FastAPI
 
 from studio import auth
-from studio.routes import executions, projects, workflows
+from studio.routes import executions, projects, versions, workflows
 from studio.security import require_csrf_header
 
 
@@ -12,6 +12,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(workflows.router)
+    app.include_router(versions.router)
     app.include_router(executions.router)
 
     @app.get("/api/health")

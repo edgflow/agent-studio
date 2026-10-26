@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, String, func
+from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -73,10 +73,29 @@ class Workflow(Base):
     )
     name: Mapped[str] = mapped_column(String(200))
     graph: Mapped[dict[str, Any]] = mapped_column(JSONB, default=lambda: {"nodes": [], "edges": []})
+    # Bumped by every save. A save must name the revision it started from.
+    revision: Mapped[int] = mapped_column(default=1, server_default="1")
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     updated_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = now_column()
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class WorkflowRevision(Base):
+    """An immutable snapshot of a workflow, written by every save. Never updated or deleted."""
+
+    __tablename__ = "workflow_revisions"
+    __table_args__ = (UniqueConstraint("workflow_id", "revision"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workflows.id", ondelete="CASCADE"))
+    revision: Mapped[int]
+    parent_revision: Mapped[int | None]  # the revision this one was edited from
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    graph: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    message: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = now_column()
 
 
 class Execution(Base):
@@ -88,6 +107,7 @@ class Execution(Base):
     workflow_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("workflows.id", ondelete="CASCADE"), index=True
     )
+    revision: Mapped[int | None]  # the saved revision that ran
     started_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(
         String(20), default="queued"

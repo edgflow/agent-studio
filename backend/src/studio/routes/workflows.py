@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from studio import versions
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.graph import Graph
@@ -24,6 +25,9 @@ class WorkflowCreate(BaseModel):
 class WorkflowSave(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     graph: Graph
+    # The revision the editor loaded. The save fails with 409 if it is no longer the latest.
+    base_revision: int = Field(ge=1)
+    message: str | None = Field(default=None, max_length=500)
 
 
 class WorkflowSummary(BaseModel):
@@ -37,6 +41,7 @@ class WorkflowOut(BaseModel):
     project_id: str
     name: str
     graph: dict[str, Any]
+    revision: int
     updated_at: datetime
     updated_by: str
 
@@ -48,6 +53,7 @@ class WorkflowOut(BaseModel):
             project_id=str(w.project_id),
             name=w.name,
             graph=w.graph,
+            revision=w.revision,
             updated_at=w.updated_at,
             updated_by=author.display_name if author else "unknown",
         )
@@ -59,6 +65,20 @@ def get_workflow(db: Db, user: User, workflow_id: uuid.UUID) -> Workflow:
     if workflow is None or db.get(Project, workflow.project_id).org_id != user.org_id:
         raise HTTPException(404, "workflow not found")
     return workflow
+
+
+def conflict(stale: versions.StaleRevision) -> HTTPException:
+    """409 with what the editor needs to explain the conflict and offer a reload."""
+    return HTTPException(
+        409,
+        {
+            "message": f"{stale.updated_by} saved revision {stale.current_revision} "
+            "after you opened this workflow",
+            "current_revision": stale.current_revision,
+            "updated_by": stale.updated_by,
+            "updated_at": stale.updated_at.isoformat(),
+        },
+    )
 
 
 @router.get("/projects/{project_id}/workflows")
@@ -83,6 +103,7 @@ def create_workflow(
     )
     db.add(workflow)
     db.flush()
+    versions.record(db, workflow.id, 1, user, workflow.name, workflow.graph, "Created", parent=None)
     db.refresh(workflow)
     return WorkflowOut.of(workflow, db)
 
@@ -97,11 +118,18 @@ def save_workflow(
     workflow_id: uuid.UUID, body: WorkflowSave, db: Db, user: CurrentUser
 ) -> WorkflowOut:
     workflow = get_workflow(db, user, workflow_id)
-    workflow.name = body.name.strip()
-    workflow.graph = body.graph.model_dump()
-    workflow.updated_by = user.id
-    db.flush()
-    db.refresh(workflow)
+    try:
+        versions.save(
+            db,
+            workflow,
+            user,
+            body.name.strip(),
+            body.graph.model_dump(),
+            body.base_revision,
+            body.message,
+        )
+    except versions.StaleRevision as stale:
+        raise conflict(stale) from None
     return WorkflowOut.of(workflow, db)
 
 

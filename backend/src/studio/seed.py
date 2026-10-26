@@ -6,6 +6,7 @@ user's password is "studio-demo". Never run this against production.
 
 from sqlalchemy import select
 
+from studio import versions
 from studio.db import SessionLocal
 from studio.models import Organization, Project, User, Workflow
 from studio.security import hash_password
@@ -86,14 +87,17 @@ def seed() -> None:
         research = Project(org_id=globex.id, name="Research Agents", created_by=users["dave"].id)
         db.add_all([support, research])
         db.flush()
-        db.add(
-            Workflow(
-                project_id=support.id,
-                name="Ticket triage",
-                graph=TRIAGE_GRAPH,
-                created_by=users["alice"].id,
-                updated_by=users["alice"].id,
-            )
+        triage = Workflow(
+            project_id=support.id,
+            name="Ticket triage",
+            graph=TRIAGE_GRAPH,
+            created_by=users["alice"].id,
+            updated_by=users["alice"].id,
+        )
+        db.add(triage)
+        db.flush()
+        versions.record(
+            db, triage.id, 1, users["alice"], triage.name, TRIAGE_GRAPH, "Created", parent=None
         )
         db.commit()
         print("demo data created; password for every user:", DEMO_PASSWORD)

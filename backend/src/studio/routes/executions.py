@@ -12,7 +12,7 @@ from studio.db import Db, SessionLocal
 from studio.engine import runner
 from studio.engine.nodes import RunError
 from studio.graph import Graph
-from studio.models import Execution, User, Workflow
+from studio.models import Execution, User, WorkflowRevision
 from studio.routes.workflows import get_workflow
 
 router = APIRouter(prefix="/api", tags=["executions"])
@@ -25,6 +25,7 @@ class RunRequest(BaseModel):
 class ExecutionOut(BaseModel):
     id: str
     workflow_id: str
+    revision: int | None
     status: str
     input: str
     output: str | None
@@ -37,6 +38,7 @@ class ExecutionOut(BaseModel):
         return cls(
             id=str(e.id),
             workflow_id=str(e.workflow_id),
+            revision=e.revision,
             status=e.status,
             input=e.input,
             output=e.output,
@@ -60,7 +62,13 @@ def run_in_background(execution_id: uuid.UUID) -> None:
         execution = db.get(Execution, execution_id)
         if execution.status != "queued":
             return
-        workflow = db.get(Workflow, execution.workflow_id)
+        # Run exactly the revision the user started, even if someone saves meanwhile.
+        snapshot = db.scalar(
+            select(WorkflowRevision).where(
+                WorkflowRevision.workflow_id == execution.workflow_id,
+                WorkflowRevision.revision == execution.revision,
+            )
+        )
         execution.status = "running"
         db.commit()
 
@@ -69,7 +77,7 @@ def run_in_background(execution_id: uuid.UUID) -> None:
             return execution.cancel_requested
 
         try:
-            output = runner.run(Graph.model_validate(workflow.graph), execution.input, cancelled)
+            output = runner.run(Graph.model_validate(snapshot.graph), execution.input, cancelled)
             if output is None:
                 execution.status = "cancelled"
             else:
@@ -91,7 +99,9 @@ def start_execution(
     user: CurrentUser,
 ) -> ExecutionOut:
     workflow = get_workflow(db, user, workflow_id)
-    execution = Execution(workflow_id=workflow.id, started_by=user.id, input=body.input)
+    execution = Execution(
+        workflow_id=workflow.id, revision=workflow.revision, started_by=user.id, input=body.input
+    )
     db.add(execution)
     db.flush()
     db.refresh(execution)
