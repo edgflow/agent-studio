@@ -13,6 +13,7 @@ const ACTIONS = [
   "execution.start", "execution.cancel", "execution.finish",
   "member.role_change", "member.remove", "member.leave",
   "invitation.create", "invitation.revoke", "invitation.accept",
+  "connection.create", "connection.delete",
   "permission.denied", "audit.export",
 ];
 const PAGE_SIZE = 25;

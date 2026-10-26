@@ -39,6 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="text-lg font-bold">
             <span className="text-rust">Agent</span> Studio
           </Link>
+          <Link href="/connections" className="text-sm text-muted hover:text-text">Connections</Link>
           {user.is_org_admin && (
             <Link href="/audit" className="text-sm text-muted hover:text-text">Audit log</Link>
           )}

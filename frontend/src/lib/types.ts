@@ -3,7 +3,8 @@
 export type User = { id: string; email: string; display_name: string; is_org_admin: boolean };
 export type Role = "owner" | "admin" | "editor" | "viewer";
 export type Permission =
-  | "view" | "edit" | "run" | "delete_workflow" | "manage_members" | "view_audit" | "delete_project";
+  | "view" | "edit" | "run" | "delete_workflow" | "manage_members" | "manage_connections"
+  | "view_audit" | "delete_project";
 // `permissions` tells the UI what to offer. The API checks every request regardless.
 export type Project = { id: string; name: string; role: Role; permissions: Permission[] };
 export type WorkflowSummary = { id: string; name: string; updated_at: string };
@@ -69,3 +70,18 @@ export type Member = {
   added_at: string;
 };
 export type Invitation = { id: string; email: string; role: Role; created_at: string; expires_at: string };
+
+export type ProviderInfo = { name: string; label: string; configured: boolean; scopes: string[] };
+export type Connection = {
+  id: string;
+  provider: string;
+  provider_label: string;
+  owner: "personal" | "project";
+  project_id: string | null;
+  account_login: string;
+  scopes: string[];
+  status: "active" | "invalid";
+  created_at: string;
+  expires_at: string | null;
+  last_checked_at: string | null;
+};
