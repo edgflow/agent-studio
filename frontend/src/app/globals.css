@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0b1320;
+  --color-surface: #131d2e;
+  --color-raised: #1b2840;
+  --color-border: #2a3a55;
+  --color-text: #e8eef7;
+  --color-muted: #8fa3bf;
+  --color-rust: #f46623;
+  --color-teal: #2dd4bf;
+  --color-ai: #a78bfa;
+  --color-amber: #f5b942;
+  --color-danger: #f87171;
+  --color-ok: #4ade80;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* React Flow styles node types named "input" and "output" itself; our nodes draw their own box. */
+/* (React Flow's stylesheet loads after this one, hence the extra .react-flow.) */
+.react-flow .react-flow__node-input,
+.react-flow .react-flow__node-output {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  width: auto;
+}

@@ -1,0 +1,21 @@
+# Local PostgreSQL for development and tests: docker compose up -d
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: studio
+      POSTGRES_DB: studio
+    ports:
+      # Bound to localhost only: not reachable from other machines.
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - studio-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio -d studio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  studio-data:
