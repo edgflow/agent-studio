@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { type Conflict, ConflictBanner } from "@/components/editor/ConflictBanner";
+import { HistoryPanel } from "@/components/editor/HistoryPanel";
 import { Inspector } from "@/components/editor/Inspector";
 import { RunPanel } from "@/components/editor/RunPanel";
 import { NODE_STYLE, nodeTypes } from "@/components/editor/StudioNode";
@@ -55,6 +56,9 @@ function Editor() {
   const [baseRevision, setBaseRevision] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<"edit" | "history">("edit");
+  const [compareFrom, setCompareFrom] = useState<number | null>(null);
 
   const show = useCallback(
     (w: Workflow) => {
@@ -104,22 +108,48 @@ function Editor() {
     try {
       const saved = await api<Workflow>(`/api/workflows/${id}`, {
         method: "PUT",
-        json: { name: workflow.name, graph: toGraph(nodes, edges), base_revision: baseRevision },
+        json: {
+          name: workflow.name,
+          graph: toGraph(nodes, edges),
+          base_revision: baseRevision,
+          message: message.trim() || null,
+        },
       });
       setWorkflow(saved);
       setBaseRevision(saved.revision);
       setDirty(false);
+      setMessage("");
       setStatus(`Saved revision ${saved.revision}`);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
-        // Someone saved first. Keep the local nodes and edges untouched.
-        setConflict((e.body as { detail: Conflict }).detail);
-        setStatus("Not saved");
-      } else {
-        setStatus(e instanceof ApiError ? `Save failed: ${e.message}` : "Save failed");
-      }
+      handleSaveError(e);
     }
   }
+
+  function handleSaveError(e: unknown) {
+    if (e instanceof ApiError && e.status === 409) {
+      // Someone saved first. Keep the local nodes and edges untouched.
+      setConflict((e.body as { detail: Conflict }).detail);
+      setStatus("Not saved");
+    } else {
+      setStatus(e instanceof ApiError ? `Save failed: ${e.message}` : "Save failed");
+    }
+  }
+
+  async function restore(revision: number) {
+    if (dirty && !window.confirm("Restoring replaces your unsaved changes. Continue?")) return;
+    try {
+      show(await api<Workflow>(`/api/workflows/${id}/restore`, {
+        method: "POST",
+        json: { revision, base_revision: baseRevision },
+      }));
+      setStatus(`Restored rev ${revision} as a new revision`);
+    } catch (e) {
+      handleSaveError(e);
+    }
+  }
+
+  // The newest revision on the server: ours, unless a conflict told us about a newer one.
+  const latest = conflict?.current_revision ?? baseRevision;
 
   const selected = nodes.find((n) => n.selected);
   if (!workflow) return <p className="p-8 text-muted">Loading…</p>;
@@ -140,11 +170,24 @@ function Editor() {
                 + {NODE_STYLE[t].label}
               </button>
             ))}
+            <input value={message} onChange={(e) => setMessage(e.target.value)} maxLength={500}
+              placeholder="Describe your change" className="w-44 rounded bg-raised px-2 py-1 text-xs" />
             <span className="text-xs text-muted">{status}</span>
             <button onClick={save} className="rounded bg-rust px-4 py-1 text-sm font-semibold text-canvas">Save</button>
           </div>
         </div>
-        {conflict && <ConflictBanner conflict={conflict} onReload={load} onDismiss={() => setConflict(null)} />}
+        {conflict && (
+          <ConflictBanner conflict={conflict} onReload={load} onDismiss={() => setConflict(null)}>
+            <button
+              onClick={() => {
+                setCompareFrom(baseRevision);
+                setTab("history");
+              }}
+              className="rounded border border-amber px-3 py-1 hover:bg-amber/20">
+              Compare with rev {conflict.current_revision}
+            </button>
+          </ConflictBanner>
+        )}
         <div className="flex-1">
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesEdit}
             onEdgesChange={onEdgesEdit} onConnect={onConnect} colorMode="dark" fitView>
@@ -154,7 +197,17 @@ function Editor() {
         </div>
       </div>
       <aside className="w-80 space-y-6 border-l border-border bg-surface p-4">
-        {selected ? (
+        <div className="flex gap-1 text-sm">
+          {(["edit", "history"] as const).map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`rounded px-3 py-1 capitalize ${tab === t ? "bg-raised" : "text-muted"}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        {tab === "history" ? (
+          <HistoryPanel workflowId={workflow.id} latest={latest} focus={compareFrom} onRestore={restore} />
+        ) : selected ? (
           <Inspector
             node={selected}
             onChange={(data) => {
@@ -170,7 +223,7 @@ function Editor() {
         ) : (
           <p className="text-sm text-muted">Select a node to edit its settings.</p>
         )}
-        <RunPanel workflowId={workflow.id} />
+        {tab === "edit" && <RunPanel workflowId={workflow.id} />}
       </aside>
     </div>
   );
