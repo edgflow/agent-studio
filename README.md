@@ -68,3 +68,10 @@ tables before every test.
   Disconnecting revokes the token at the provider. For local work without a
   GitHub OAuth app, run the test provider in `backend/devtools/` (see
   `.env.example`). Workflows refuse to store anything that looks like a credential.
+- The editor opens a WebSocket at `/api/workflows/{id}/live` (proxied by
+  Next.js like the rest of `/api`). It shows who else has the workflow open and
+  who has unsaved changes, and announces saves as soon as they are committed.
+  The server checks the `Origin` header, the session and project membership,
+  and keeps checking membership while the socket is open. The hub
+  (`studio/live.py`) lives in one process's memory: add a broker such as Redis
+  pub/sub before running several workers.

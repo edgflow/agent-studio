@@ -24,9 +24,11 @@ import { type Conflict, ConflictBanner } from "@/components/editor/ConflictBanne
 import { HistoryPanel } from "@/components/editor/HistoryPanel";
 import { Inspector } from "@/components/editor/Inspector";
 import { RunPanel } from "@/components/editor/RunPanel";
+import { Presence } from "@/components/editor/Presence";
 import { NODE_STYLE, nodeTypes } from "@/components/editor/StudioNode";
 import { ApiError, api } from "@/lib/api";
 import type { Graph, NodeType, Project, Workflow } from "@/lib/types";
+import { type LiveEvent, useLive } from "@/lib/useLive";
 
 /** React Flow keeps UI state on nodes (selected, measured…); only these fields are saved. */
 function toGraph(nodes: Node[], edges: Edge[]): Graph {
@@ -60,6 +62,7 @@ function Editor() {
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<"edit" | "history">("edit");
   const [compareFrom, setCompareFrom] = useState<number | null>(null);
+  const [deletedBy, setDeletedBy] = useState<string | null>(null);
 
   const show = useCallback(
     (w: Workflow) => {
@@ -81,6 +84,26 @@ function Editor() {
       api<Project>(`/api/projects/${w.project_id}`).then(setProject);
     });
   }, [id, show]);
+
+  // Someone else saved or deleted this workflow. With nothing unsaved here, just move to
+  // their revision; with unsaved changes, warn now instead of letting the save fail later.
+  function onLive(event: LiveEvent) {
+    if (event.type === "deleted") return setDeletedBy(event.by);
+    if (event.revision <= baseRevision) return; // our own save, or one we already have
+    if (!dirty) {
+      load();
+      setStatus(`Updated to ${event.by}'s revision ${event.revision}`);
+    } else {
+      setConflict({
+        message: `${event.by} saved revision ${event.revision}`,
+        current_revision: event.revision,
+        updated_by: event.by,
+        updated_at: new Date().toISOString(),
+        early: true,
+      });
+    }
+  }
+  const live = useLive(id, dirty, onLive);
 
   // Until the project has loaded, offer nothing that changes the workflow.
   const can = (p: Project["permissions"][number]) => project?.permissions.includes(p) ?? false;
@@ -167,12 +190,13 @@ function Editor() {
   return (
     <div className="flex flex-1">
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-border px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 whitespace-nowrap border-b border-border px-4 py-2">
           <Link href={`/projects/${workflow.project_id}`} className="text-sm text-muted hover:text-text">←</Link>
           <h1 className="font-semibold">{workflow.name}</h1>
           <span className="rounded bg-raised px-2 py-0.5 text-xs text-muted">rev {baseRevision}</span>
           <span className="text-xs text-muted">last saved by {workflow.updated_by}</span>
           {dirty && <span className="text-xs text-amber">● Unsaved changes</span>}
+          <Presence people={live.people} online={live.online} />
           {project && !canEdit && (
             <span className="ml-auto rounded border border-border px-2 py-0.5 text-xs text-muted">
               View only · you are a {project.role} in this project
@@ -191,6 +215,12 @@ function Editor() {
             <button onClick={save} className="rounded bg-rust px-4 py-1 text-sm font-semibold text-canvas">Save</button>
           </div>}
         </div>
+        {deletedBy && (
+          <div className="border-b border-danger bg-danger/10 px-4 py-2 text-sm">
+            <strong>{deletedBy} deleted this workflow.</strong> Saving is no longer possible.{" "}
+            <Link href={`/projects/${workflow.project_id}`} className="underline">Back to the project</Link>
+          </div>
+        )}
         {conflict && (
           <ConflictBanner conflict={conflict} onReload={load} onDismiss={() => setConflict(null)}>
             <button
