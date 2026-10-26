@@ -1,31 +1,17 @@
 """Optimistic concurrency, version history and restore, against a real PostgreSQL."""
 
-import copy
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from helpers import open_triage, with_template
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from studio import versions
 from studio.db import SessionLocal
 from studio.models import User, Workflow, WorkflowRevision
-
-
-def open_triage(client) -> dict:
-    project = next(p for p in client.get("/api/projects").json() if p["name"] == "Support Bot")
-    workflow_id = client.get(f"/api/projects/{project['id']}/workflows").json()[0]["id"]
-    return client.get(f"/api/workflows/{workflow_id}").json()
-
-
-def with_template(workflow: dict, node_id: str, template: str) -> dict:
-    graph = copy.deepcopy(workflow["graph"])
-    for node in graph["nodes"]:
-        if node["id"] == node_id:
-            node["data"]["template"] = template
-    return {"name": workflow["name"], "graph": graph, "base_revision": workflow["revision"]}
 
 
 def test_a_stale_save_is_rejected_and_nothing_is_overwritten(seeded, make_client):

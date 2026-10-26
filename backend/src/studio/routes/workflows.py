@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from studio import versions
+from studio import audit, versions
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.graph import Graph
@@ -67,8 +67,21 @@ def get_workflow(db: Db, user: User, workflow_id: uuid.UUID) -> Workflow:
     return workflow
 
 
-def conflict(stale: versions.StaleRevision) -> HTTPException:
-    """409 with what the editor needs to explain the conflict and offer a reload."""
+def conflict(
+    stale: versions.StaleRevision, action: str, user: User, workflow: Workflow, base: int
+) -> HTTPException:
+    """Records the rejected attempt, then builds the 409 with what the editor needs to
+    explain the conflict and offer a reload."""
+    audit.record_now(
+        action,
+        user,
+        target=audit.Target.of(workflow),
+        details={
+            "reason": "stale revision",
+            "base_revision": base,
+            "current_revision": stale.current_revision,
+        },
+    )
     return HTTPException(
         409,
         {
@@ -104,6 +117,7 @@ def create_workflow(
     db.add(workflow)
     db.flush()
     versions.record(db, workflow.id, 1, user, workflow.name, workflow.graph, "Created", parent=None)
+    audit.record(db, "workflow.create", user, target=audit.Target.of(workflow))
     db.refresh(workflow)
     return WorkflowOut.of(workflow, db)
 
@@ -119,7 +133,7 @@ def save_workflow(
 ) -> WorkflowOut:
     workflow = get_workflow(db, user, workflow_id)
     try:
-        versions.save(
+        revision = versions.save(
             db,
             workflow,
             user,
@@ -129,10 +143,29 @@ def save_workflow(
             body.message,
         )
     except versions.StaleRevision as stale:
-        raise conflict(stale) from None
+        raise conflict(stale, "workflow.update", user, workflow, body.base_revision) from None
+    audit.record(
+        db,
+        "workflow.update",
+        user,
+        target=audit.Target.of(workflow),
+        details={
+            "from_revision": body.base_revision,
+            "revision": revision,
+            "message": versions.clean_message(body.message),
+        },
+    )
     return WorkflowOut.of(workflow, db)
 
 
 @router.delete("/workflows/{workflow_id}", status_code=204)
 def delete_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> None:
-    db.delete(get_workflow(db, user, workflow_id))
+    workflow = get_workflow(db, user, workflow_id)
+    audit.record(
+        db,
+        "workflow.delete",
+        user,
+        target=audit.Target.of(workflow),
+        details={"revision": workflow.revision},
+    )
+    db.delete(workflow)

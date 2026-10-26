@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from studio import versions
+from studio import audit, versions
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.models import User, WorkflowRevision
@@ -94,7 +94,7 @@ def restore(workflow_id: uuid.UUID, body: RestoreRequest, db: Db, user: CurrentU
     workflow = get_workflow(db, user, workflow_id)
     old = get_revision(db, workflow_id, body.revision)
     try:
-        versions.save(
+        revision = versions.save(
             db,
             workflow,
             user,
@@ -104,5 +104,12 @@ def restore(workflow_id: uuid.UUID, body: RestoreRequest, db: Db, user: CurrentU
             f"Restored revision {old.revision}",
         )
     except versions.StaleRevision as stale:
-        raise conflict(stale) from None
+        raise conflict(stale, "workflow.restore", user, workflow, body.base_revision) from None
+    audit.record(
+        db,
+        "workflow.restore",
+        user,
+        target=audit.Target.of(workflow),
+        details={"restored_revision": old.revision, "revision": revision},
+    )
     return WorkflowOut.of(workflow, db)

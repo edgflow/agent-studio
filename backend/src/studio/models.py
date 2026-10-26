@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -118,3 +118,38 @@ class Execution(Base):
     cancel_requested: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = now_column()
     finished_at: Mapped[datetime | None]
+
+
+class AuditEvent(Base):
+    """One thing that happened: who did what to which resource, and with what outcome.
+
+    Append-only: the application only inserts, and a database trigger rejects
+    UPDATE and DELETE. Deliberately no foreign keys, so an event outlives the
+    user, project or workflow it describes (names are copied in for that reason).
+    """
+
+    __tablename__ = "audit_events"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('success', 'failure', 'denied')", name="audit_outcome"),
+        Index("ix_audit_org_time", "org_id", "occurred_at"),
+        Index("ix_audit_org_action", "org_id", "action"),
+        Index("ix_audit_org_actor", "org_id", "actor_id"),
+        Index("ix_audit_org_project", "org_id", "project_id"),
+        Index("ix_audit_org_resource", "org_id", "resource_type", "resource_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    occurred_at: Mapped[datetime] = now_column()
+    org_id: Mapped[uuid.UUID | None]  # None only for sign-ins to unknown accounts
+    project_id: Mapped[uuid.UUID | None]
+    actor_id: Mapped[uuid.UUID | None]
+    actor_name: Mapped[str | None] = mapped_column(String(100))
+    action: Mapped[str] = mapped_column(String(64))  # e.g. "workflow.update"
+    resource_type: Mapped[str | None] = mapped_column(String(40))
+    resource_id: Mapped[str | None] = mapped_column(String(64))
+    resource_name: Mapped[str | None] = mapped_column(String(200))
+    outcome: Mapped[str] = mapped_column(String(10))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    source_ip: Mapped[str | None] = mapped_column(String(45))  # sign-in events only
+    # "metadata" is reserved on SQLAlchemy models, hence the attribute name.
+    details: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)

@@ -47,7 +47,11 @@ def clean_tables(database):
 
     names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
     with engine.begin() as conn:
+        # audit_events refuses TRUNCATE. The table's owner can switch that off, which is
+        # exactly why production runs the app as a role that doesn't own the table.
+        conn.execute(text("ALTER TABLE audit_events DISABLE TRIGGER audit_events_no_truncate"))
         conn.execute(text(f"TRUNCATE {names} CASCADE"))
+        conn.execute(text("ALTER TABLE audit_events ENABLE TRIGGER audit_events_no_truncate"))
     yield
 
 

@@ -7,12 +7,13 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from studio import audit
 from studio.auth import CurrentUser
 from studio.db import Db, SessionLocal
 from studio.engine import runner
 from studio.engine.nodes import RunError
 from studio.graph import Graph
-from studio.models import Execution, User, WorkflowRevision
+from studio.models import Execution, User, Workflow, WorkflowRevision
 from studio.routes.workflows import get_workflow
 
 router = APIRouter(prefix="/api", tags=["executions"])
@@ -46,6 +47,11 @@ class ExecutionOut(BaseModel):
             created_at=e.created_at,
             finished_at=e.finished_at,
         )
+
+
+def run_target(execution: Execution, workflow: Workflow) -> audit.Target:
+    """Runs are named after their workflow in the audit trail."""
+    return audit.Target("execution", execution.id, workflow.name, workflow.project_id)
 
 
 def get_execution(db: Db, user: User, execution_id: uuid.UUID) -> Execution:
@@ -87,6 +93,14 @@ def run_in_background(execution_id: uuid.UUID) -> None:
         except Exception:
             execution.status, execution.error = "failed", "internal error"
         execution.finished_at = datetime.now(UTC)
+        audit.record(
+            db,
+            "execution.finish",
+            db.get(User, execution.started_by),
+            target=run_target(execution, db.get(Workflow, execution.workflow_id)),
+            outcome="failure" if execution.status == "failed" else "success",
+            details={"status": execution.status, "revision": execution.revision},
+        )
         db.commit()
 
 
@@ -105,6 +119,14 @@ def start_execution(
     db.add(execution)
     db.flush()
     db.refresh(execution)
+    # The input is not recorded: it is user data and can hold anything.
+    audit.record(
+        db,
+        "execution.start",
+        user,
+        target=run_target(execution, workflow),
+        details={"revision": execution.revision},
+    )
     background.add_task(run_in_background, execution.id)
     return ExecutionOut.of(execution)
 
@@ -130,6 +152,8 @@ def read_execution(execution_id: uuid.UUID, db: Db, user: CurrentUser) -> Execut
 def cancel_execution(execution_id: uuid.UUID, db: Db, user: CurrentUser) -> ExecutionOut:
     execution = get_execution(db, user, execution_id)
     if execution.status in ("queued", "running"):
+        workflow = db.get(Workflow, execution.workflow_id)
+        audit.record(db, "execution.cancel", user, target=run_target(execution, workflow))
         execution.cancel_requested = True
         if execution.status == "queued":
             execution.status, execution.finished_at = "cancelled", datetime.now(UTC)
