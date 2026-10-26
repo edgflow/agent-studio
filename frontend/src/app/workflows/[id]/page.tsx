@@ -26,7 +26,7 @@ import { Inspector } from "@/components/editor/Inspector";
 import { RunPanel } from "@/components/editor/RunPanel";
 import { NODE_STYLE, nodeTypes } from "@/components/editor/StudioNode";
 import { ApiError, api } from "@/lib/api";
-import type { Graph, NodeType, Workflow } from "@/lib/types";
+import type { Graph, NodeType, Project, Workflow } from "@/lib/types";
 
 /** React Flow keeps UI state on nodes (selected, measured…); only these fields are saved. */
 function toGraph(nodes: Node[], edges: Edge[]): Graph {
@@ -49,6 +49,7 @@ function newNodeId(type: NodeType): string {
 function Editor() {
   const { id } = useParams<{ id: string }>();
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [status, setStatus] = useState("");
@@ -74,8 +75,16 @@ function Editor() {
   const load = useCallback(() => api<Workflow>(`/api/workflows/${id}`).then(show), [id, show]);
 
   useEffect(() => {
-    api<Workflow>(`/api/workflows/${id}`).then(show);
+    api<Workflow>(`/api/workflows/${id}`).then((w) => {
+      show(w);
+      // The project says what this user's role lets them do here.
+      api<Project>(`/api/projects/${w.project_id}`).then(setProject);
+    });
   }, [id, show]);
+
+  // Until the project has loaded, offer nothing that changes the workflow.
+  const can = (p: Project["permissions"][number]) => project?.permissions.includes(p) ?? false;
+  const canEdit = can("edit");
 
   // Selecting or measuring a node is not an edit; moving, adding or removing one is.
   function onNodesEdit(changes: NodeChange[]) {
@@ -89,10 +98,11 @@ function Editor() {
 
   const onConnect = useCallback(
     (c: Connection) => {
+      if (!canEdit) return;
       setEdges((all) => addEdge({ ...c, id: `${c.source}-${c.target}` }, all));
       setDirty(true);
     },
-    [setEdges],
+    [setEdges, canEdit],
   );
 
   function addNode(type: NodeType) {
@@ -163,7 +173,12 @@ function Editor() {
           <span className="rounded bg-raised px-2 py-0.5 text-xs text-muted">rev {baseRevision}</span>
           <span className="text-xs text-muted">last saved by {workflow.updated_by}</span>
           {dirty && <span className="text-xs text-amber">● Unsaved changes</span>}
-          <div className="ml-auto flex items-center gap-2">
+          {project && !canEdit && (
+            <span className="ml-auto rounded border border-border px-2 py-0.5 text-xs text-muted">
+              View only · you are a {project.role} in this project
+            </span>
+          )}
+          {canEdit && <div className="ml-auto flex items-center gap-2">
             {(Object.keys(NODE_STYLE) as NodeType[]).map((t) => (
               <button key={t} onClick={() => addNode(t)}
                 className="rounded border border-border px-2 py-1 text-xs hover:bg-raised">
@@ -174,7 +189,7 @@ function Editor() {
               placeholder="Describe your change" className="w-44 rounded bg-raised px-2 py-1 text-xs" />
             <span className="text-xs text-muted">{status}</span>
             <button onClick={save} className="rounded bg-rust px-4 py-1 text-sm font-semibold text-canvas">Save</button>
-          </div>
+          </div>}
         </div>
         {conflict && (
           <ConflictBanner conflict={conflict} onReload={load} onDismiss={() => setConflict(null)}>
@@ -190,7 +205,8 @@ function Editor() {
         )}
         <div className="flex-1">
           <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesEdit}
-            onEdgesChange={onEdgesEdit} onConnect={onConnect} colorMode="dark" fitView>
+            onEdgesChange={onEdgesEdit} onConnect={onConnect} colorMode="dark" fitView
+            nodesDraggable={canEdit} nodesConnectable={canEdit} deleteKeyCode={canEdit ? "Backspace" : null}>
             <Background />
             <Controls />
           </ReactFlow>
@@ -206,10 +222,12 @@ function Editor() {
           ))}
         </div>
         {tab === "history" ? (
-          <HistoryPanel workflowId={workflow.id} latest={latest} focus={compareFrom} onRestore={restore} />
+          <HistoryPanel workflowId={workflow.id} latest={latest} focus={compareFrom} canRestore={canEdit}
+            onRestore={restore} />
         ) : selected ? (
           <Inspector
             node={selected}
+            readOnly={!canEdit}
             onChange={(data) => {
               setNodes((all) => all.map((n) => (n.id === selected.id ? { ...n, data } : n)));
               setDirty(true);
@@ -221,9 +239,9 @@ function Editor() {
             }}
           />
         ) : (
-          <p className="text-sm text-muted">Select a node to edit its settings.</p>
+          <p className="text-sm text-muted">Select a node to {canEdit ? "edit" : "see"} its settings.</p>
         )}
-        {tab === "edit" && <RunPanel workflowId={workflow.id} />}
+        {tab === "edit" && can("run") && <RunPanel workflowId={workflow.id} />}
       </aside>
     </div>
   );

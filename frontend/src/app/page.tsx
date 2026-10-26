@@ -30,8 +30,9 @@ function Projects() {
         {projects.map((p) => (
           <li key={p.id}>
             <Link href={`/projects/${p.id}`}
-              className="block rounded-lg border border-border bg-surface px-4 py-3 hover:border-teal">
-              {p.name}
+              className="flex justify-between rounded-lg border border-border bg-surface px-4 py-3 hover:border-teal">
+              <span>{p.name}</span>
+              <span className="text-sm text-muted">{p.role}</span>
             </Link>
           </li>
         ))}

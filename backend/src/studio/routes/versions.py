@@ -12,6 +12,7 @@ from studio import audit, versions
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.models import User, WorkflowRevision
+from studio.permissions import Permission
 from studio.routes.workflows import WorkflowOut, conflict, get_workflow
 
 router = APIRouter(prefix="/api/workflows", tags=["versions"])
@@ -91,7 +92,7 @@ def compare(
 def restore(workflow_id: uuid.UUID, body: RestoreRequest, db: Db, user: CurrentUser) -> WorkflowOut:
     """Makes an old revision the latest again, as a *new* revision. History is never rewritten,
     and nothing runs: a restored workflow waits for someone to run it."""
-    workflow = get_workflow(db, user, workflow_id)
+    workflow = get_workflow(db, user, workflow_id, Permission.EDIT)
     old = get_revision(db, workflow_id, body.revision)
     try:
         revision = versions.save(

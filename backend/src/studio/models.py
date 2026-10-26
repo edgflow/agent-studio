@@ -4,7 +4,15 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +35,8 @@ class Organization(Base):
 
 class User(Base):
     __tablename__ = "users"
+    # Lets other tables point at "this user, in this organization" (see ProjectMember).
+    __table_args__ = (UniqueConstraint("id", "org_id", name="uq_users_id_org"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
@@ -54,12 +64,46 @@ class AuthSession(Base):
 
 class Project(Base):
     __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("id", "org_id", name="uq_projects_id_org"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = now_column()
+
+
+class ProjectMember(Base):
+    """A user's role in one project. Project access comes only from here.
+
+    The organization is part of both foreign keys, so the database itself refuses
+    a membership that would connect a user to another organization's project.
+    """
+
+    __tablename__ = "project_members"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "org_id"], ["projects.id", "projects.org_id"], ondelete="CASCADE"
+        ),
+        ForeignKeyConstraint(
+            ["user_id", "org_id"], ["users.id", "users.org_id"], ondelete="CASCADE"
+        ),
+        CheckConstraint("role IN ('owner', 'admin', 'editor', 'viewer')", name="member_role"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(primary_key=True, index=True)
+    org_id: Mapped[uuid.UUID]
+    role: Mapped[str] = mapped_column(String(10))
+    added_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = now_column()
+
+    user: Mapped["User"] = relationship(
+        primaryjoin="ProjectMember.user_id == User.id",
+        foreign_keys="ProjectMember.user_id",
+        viewonly=True,
+        lazy="joined",
+    )
 
 
 class Workflow(Base):

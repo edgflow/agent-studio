@@ -13,6 +13,7 @@ from studio.auth import CurrentUser
 from studio.db import Db
 from studio.graph import Graph
 from studio.models import Project, User, Workflow
+from studio.permissions import Permission, authorize
 from studio.routes.projects import get_project
 
 router = APIRouter(prefix="/api", tags=["workflows"])
@@ -59,11 +60,17 @@ class WorkflowOut(BaseModel):
         )
 
 
-def get_workflow(db: Db, user: User, workflow_id: uuid.UUID) -> Workflow:
-    """A workflow in one of the user's organization's projects, or 404."""
+def get_workflow(
+    db: Db, user: User, workflow_id: uuid.UUID, permission: Permission = Permission.VIEW
+) -> Workflow:
+    """A workflow in a project the user is a member of, with a role that allows `permission`."""
     workflow = db.get(Workflow, workflow_id)
-    if workflow is None or db.get(Project, workflow.project_id).org_id != user.org_id:
+    if workflow is None:
         raise HTTPException(404, "workflow not found")
+    project = db.get(Project, workflow.project_id)
+    authorize(
+        db, user, project, permission, audit.Target.of(workflow), not_found="workflow not found"
+    )
     return workflow
 
 
@@ -107,7 +114,7 @@ def list_workflows(project_id: uuid.UUID, db: Db, user: CurrentUser) -> list[Wor
 def create_workflow(
     project_id: uuid.UUID, body: WorkflowCreate, db: Db, user: CurrentUser
 ) -> WorkflowOut:
-    get_project(db, user, project_id)
+    get_project(db, user, project_id, Permission.EDIT)
     workflow = Workflow(
         project_id=project_id,
         name=body.name.strip(),
@@ -131,7 +138,7 @@ def read_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> Workflow
 def save_workflow(
     workflow_id: uuid.UUID, body: WorkflowSave, db: Db, user: CurrentUser
 ) -> WorkflowOut:
-    workflow = get_workflow(db, user, workflow_id)
+    workflow = get_workflow(db, user, workflow_id, Permission.EDIT)
     try:
         revision = versions.save(
             db,
@@ -160,7 +167,7 @@ def save_workflow(
 
 @router.delete("/workflows/{workflow_id}", status_code=204)
 def delete_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> None:
-    workflow = get_workflow(db, user, workflow_id)
+    workflow = get_workflow(db, user, workflow_id, Permission.DELETE_WORKFLOW)
     audit.record(
         db,
         "workflow.delete",

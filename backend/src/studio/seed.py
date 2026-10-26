@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from studio import versions
 from studio.db import SessionLocal
-from studio.models import Organization, Project, User, Workflow
+from studio.models import Organization, Project, ProjectMember, User, Workflow
 from studio.security import hash_password
 
 DEMO_PASSWORD = "studio-demo"
@@ -87,6 +87,18 @@ def seed() -> None:
         research = Project(org_id=globex.id, name="Research Agents", created_by=users["dave"].id)
         db.add_all([support, research])
         db.flush()
+        # Alice runs Support Bot, Bob builds in it, Carol only reviews.
+        for project, name, role in (
+            (support, "alice", "owner"),
+            (support, "bob", "editor"),
+            (support, "carol", "viewer"),
+            (research, "dave", "owner"),
+        ):
+            db.add(
+                ProjectMember(
+                    project_id=project.id, user_id=users[name].id, org_id=project.org_id, role=role
+                )
+            )
         triage = Workflow(
             project_id=support.id,
             name="Ticket triage",

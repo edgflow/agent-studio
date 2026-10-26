@@ -5,13 +5,15 @@ import type { Node } from "@xyflow/react";
 import { NODE_STYLE } from "@/components/editor/StudioNode";
 import type { NodeType } from "@/lib/types";
 
-/** Settings of the selected node. */
+/** Settings of the selected node. Read-only for people who may only view. */
 export function Inspector({
   node,
+  readOnly,
   onChange,
   onDelete,
 }: {
   node: Node;
+  readOnly: boolean;
   onChange: (data: Record<string, string>) => void;
   onDelete: () => void;
 }) {
@@ -23,25 +25,27 @@ export function Inspector({
       {kind === "template" && (
         <label className="block text-sm">
           Template <span className="text-muted">({"{input}"} is replaced)</span>
-          <textarea className="mt-1 h-28 w-full rounded bg-raised p-2 font-mono text-xs"
+          <textarea className="mt-1 h-28 w-full rounded bg-raised p-2 font-mono text-xs" readOnly={readOnly}
             value={data.template ?? ""} onChange={(e) => onChange({ ...data, template: e.target.value })} />
         </label>
       )}
       {kind === "llm" && (
         <label className="block text-sm">
           Model
-          <input className="mt-1 w-full rounded bg-raised px-2 py-1" placeholder="server default"
+          <input className="mt-1 w-full rounded bg-raised px-2 py-1" placeholder="server default" readOnly={readOnly}
             value={data.model ?? ""} onChange={(e) => onChange({ ...data, model: e.target.value })} />
         </label>
       )}
       {(kind === "input" || kind === "output") && (
         <label className="block text-sm">
           Label
-          <input className="mt-1 w-full rounded bg-raised px-2 py-1"
+          <input className="mt-1 w-full rounded bg-raised px-2 py-1" readOnly={readOnly}
             value={data.label ?? ""} onChange={(e) => onChange({ ...data, label: e.target.value })} />
         </label>
       )}
-      <button onClick={onDelete} className="text-sm text-danger hover:underline">Delete node</button>
+      {!readOnly && (
+        <button onClick={onDelete} className="text-sm text-danger hover:underline">Delete node</button>
+      )}
     </div>
   );
 }

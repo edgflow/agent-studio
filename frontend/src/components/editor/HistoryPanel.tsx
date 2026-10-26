@@ -19,10 +19,12 @@ export function HistoryPanel({
   workflowId,
   latest,
   focus,
+  canRestore,
   onRestore,
 }: {
   workflowId: string;
   latest: number;
+  canRestore: boolean;
   focus: number | null; // a revision to compare right away (e.g. after a conflict)
   onRestore: (revision: number) => void;
 }) {
@@ -59,7 +61,7 @@ export function HistoryPanel({
         <div className="space-y-2 rounded border border-border p-2">
           <div className="text-xs text-muted">Changes from rev {picked} to rev {latest}:</div>
           <DiffView diff={diff} />
-          {!isEmpty(diff) && (
+          {canRestore && !isEmpty(diff) && (
             <button onClick={() => onRestore(picked)}
               className="rounded border border-teal px-2 py-1 text-xs text-teal hover:bg-teal/10">
               Restore rev {picked} as a new revision

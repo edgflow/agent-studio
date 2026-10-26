@@ -14,6 +14,7 @@ from studio.engine import runner
 from studio.engine.nodes import RunError
 from studio.graph import Graph
 from studio.models import Execution, User, Workflow, WorkflowRevision
+from studio.permissions import Permission
 from studio.routes.workflows import get_workflow
 
 router = APIRouter(prefix="/api", tags=["executions"])
@@ -54,11 +55,13 @@ def run_target(execution: Execution, workflow: Workflow) -> audit.Target:
     return audit.Target("execution", execution.id, workflow.name, workflow.project_id)
 
 
-def get_execution(db: Db, user: User, execution_id: uuid.UUID) -> Execution:
+def get_execution(
+    db: Db, user: User, execution_id: uuid.UUID, permission: Permission = Permission.VIEW
+) -> Execution:
     execution = db.get(Execution, execution_id)
     if execution is None:
         raise HTTPException(404, "execution not found")
-    get_workflow(db, user, execution.workflow_id)  # same organization check
+    get_workflow(db, user, execution.workflow_id, permission)  # the project's rules apply
     return execution
 
 
@@ -112,7 +115,7 @@ def start_execution(
     db: Db,
     user: CurrentUser,
 ) -> ExecutionOut:
-    workflow = get_workflow(db, user, workflow_id)
+    workflow = get_workflow(db, user, workflow_id, Permission.RUN)
     execution = Execution(
         workflow_id=workflow.id, revision=workflow.revision, started_by=user.id, input=body.input
     )
@@ -150,7 +153,7 @@ def read_execution(execution_id: uuid.UUID, db: Db, user: CurrentUser) -> Execut
 
 @router.post("/executions/{execution_id}/cancel")
 def cancel_execution(execution_id: uuid.UUID, db: Db, user: CurrentUser) -> ExecutionOut:
-    execution = get_execution(db, user, execution_id)
+    execution = get_execution(db, user, execution_id, Permission.RUN)
     if execution.status in ("queued", "running"):
         workflow = db.get(Workflow, execution.workflow_id)
         audit.record(db, "execution.cancel", user, target=run_target(execution, workflow))

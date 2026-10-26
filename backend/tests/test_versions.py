@@ -31,7 +31,8 @@ def test_a_stale_save_is_rejected_and_nothing_is_overwritten(seeded, make_client
 
 
 def test_concurrent_saves_through_the_api_have_exactly_one_winner(seeded, make_client):
-    clients = [make_client(e) for e in ("alice@acme.test", "bob@acme.test", "carol@acme.test")]
+    # Alice in two browser tabs, and Bob: the same person can conflict with herself.
+    clients = [make_client(e) for e in ("alice@acme.test", "alice@acme.test", "bob@acme.test")]
     loaded = [open_triage(c) for c in clients]
     start = threading.Barrier(len(clients))
 

@@ -1,7 +1,11 @@
 // The shapes the API returns.
 
 export type User = { id: string; email: string; display_name: string; is_org_admin: boolean };
-export type Project = { id: string; name: string };
+export type Role = "owner" | "admin" | "editor" | "viewer";
+export type Permission =
+  | "view" | "edit" | "run" | "delete_workflow" | "manage_members" | "view_audit" | "delete_project";
+// `permissions` tells the UI what to offer. The API checks every request regardless.
+export type Project = { id: string; name: string; role: Role; permissions: Permission[] };
 export type WorkflowSummary = { id: string; name: string; updated_at: string };
 
 export type NodeType = "input" | "template" | "llm" | "output";
