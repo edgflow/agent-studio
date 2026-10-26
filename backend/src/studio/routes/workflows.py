@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -12,6 +12,7 @@ from studio import audit, versions
 from studio.auth import CurrentUser
 from studio.db import Db
 from studio.graph import Graph
+from studio.live import hub
 from studio.models import Project, User, Workflow
 from studio.permissions import Permission, authorize
 from studio.routes.projects import get_project
@@ -136,7 +137,11 @@ def read_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> Workflow
 
 @router.put("/workflows/{workflow_id}")
 def save_workflow(
-    workflow_id: uuid.UUID, body: WorkflowSave, db: Db, user: CurrentUser
+    workflow_id: uuid.UUID,
+    body: WorkflowSave,
+    background: BackgroundTasks,
+    db: Db,
+    user: CurrentUser,
 ) -> WorkflowOut:
     workflow = get_workflow(db, user, workflow_id, Permission.EDIT)
     try:
@@ -162,11 +167,16 @@ def save_workflow(
             "message": versions.clean_message(body.message),
         },
     )
+    # Background tasks run after the response, so after the commit: whoever hears about
+    # revision N can already load it.
+    background.add_task(hub.saved, workflow.id, revision, user.display_name)
     return WorkflowOut.of(workflow, db)
 
 
 @router.delete("/workflows/{workflow_id}", status_code=204)
-def delete_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> None:
+def delete_workflow(
+    workflow_id: uuid.UUID, background: BackgroundTasks, db: Db, user: CurrentUser
+) -> None:
     workflow = get_workflow(db, user, workflow_id, Permission.DELETE_WORKFLOW)
     audit.record(
         db,
@@ -176,3 +186,4 @@ def delete_workflow(workflow_id: uuid.UUID, db: Db, user: CurrentUser) -> None:
         details={"revision": workflow.revision},
     )
     db.delete(workflow)
+    background.add_task(hub.deleted, workflow.id, user.display_name)

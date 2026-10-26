@@ -4,13 +4,14 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from studio import audit, versions
 from studio.auth import CurrentUser
 from studio.db import Db
+from studio.live import hub
 from studio.models import User, WorkflowRevision
 from studio.permissions import Permission
 from studio.routes.workflows import WorkflowOut, conflict, get_workflow
@@ -89,7 +90,13 @@ def compare(
 
 
 @router.post("/{workflow_id}/restore")
-def restore(workflow_id: uuid.UUID, body: RestoreRequest, db: Db, user: CurrentUser) -> WorkflowOut:
+def restore(
+    workflow_id: uuid.UUID,
+    body: RestoreRequest,
+    background: BackgroundTasks,
+    db: Db,
+    user: CurrentUser,
+) -> WorkflowOut:
     """Makes an old revision the latest again, as a *new* revision. History is never rewritten,
     and nothing runs: a restored workflow waits for someone to run it."""
     workflow = get_workflow(db, user, workflow_id, Permission.EDIT)
@@ -113,4 +120,5 @@ def restore(workflow_id: uuid.UUID, body: RestoreRequest, db: Db, user: CurrentU
         target=audit.Target.of(workflow),
         details={"restored_revision": old.revision, "revision": revision},
     )
+    background.add_task(hub.saved, workflow.id, revision, user.display_name)
     return WorkflowOut.of(workflow, db)

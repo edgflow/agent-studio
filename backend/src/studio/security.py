@@ -5,7 +5,8 @@ import secrets
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
+from starlette.requests import HTTPConnection
 
 _hasher = PasswordHasher()
 
@@ -39,12 +40,16 @@ UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_HEADER = "x-requested-with"
 
 
-def require_csrf_header(request: Request) -> None:
+def require_csrf_header(connection: HTTPConnection) -> None:
     """Cookie-authenticated writes must carry a custom header.
 
     A cross-site form or image tag cannot set custom headers, and a
     cross-site fetch() that sets one needs a CORS preflight, which this API
     never grants. So a request with the header came from our own frontend.
+    (WebSockets can't send custom headers; their handler checks Origin instead.)
     """
-    if request.method in UNSAFE_METHODS and request.headers.get(CSRF_HEADER) != "studio":
+    if connection.scope["type"] != "http":
+        return
+    method = connection.scope["method"]
+    if method in UNSAFE_METHODS and connection.headers.get(CSRF_HEADER) != "studio":
         raise HTTPException(403, "missing the X-Requested-With: studio header")

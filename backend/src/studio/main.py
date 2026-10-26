@@ -8,6 +8,7 @@ from studio.routes import (
     audit_logs,
     connections,
     executions,
+    live,
     members,
     projects,
     versions,
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     app.include_router(executions.router)
     app.include_router(members.router)
     app.include_router(connections.router)
+    app.include_router(live.router)
     app.include_router(audit_logs.router)
 
     @app.get("/api/health")
