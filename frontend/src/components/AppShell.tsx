@@ -32,9 +32,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <UserContext.Provider value={user}>
       <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-3">
-        <Link href="/" className="text-lg font-bold">
-          <span className="text-rust">Agent</span> Studio
-        </Link>
+        <nav className="flex items-center gap-6">
+          <Link href="/" className="text-lg font-bold">
+            <span className="text-rust">Agent</span> Studio
+          </Link>
+          {user.is_org_admin && (
+            <Link href="/audit" className="text-sm text-muted hover:text-text">Audit log</Link>
+          )}
+        </nav>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-muted">{user.display_name}</span>
           <button onClick={logout} className="rounded border border-border px-3 py-1 hover:bg-raised">

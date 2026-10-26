@@ -46,3 +46,11 @@ tables before every test.
 - A workflow is React Flow JSON (`nodes`, `edges`). Running it compiles the graph
   into a LangGraph `StateGraph` and runs it in the background; the run can be
   cancelled between steps.
+- Every save names the revision it started from. A save based on an older
+  revision is rejected with `409` and nothing is overwritten. Every revision is
+  kept; restoring an old one saves it again as a new revision.
+- The append-only `audit_events` table records sign-ins, changes, rejected saves
+  and runs, with a request id that matches the response's `X-Request-ID`.
+  Organization admins read it at `/audit` and can export CSV. In production, run
+  the app as a database role that does not own `audit_events`, so the
+  append-only trigger can't be switched off from the app.

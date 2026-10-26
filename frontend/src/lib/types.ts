@@ -35,3 +35,24 @@ export type Execution = {
   created_at: string;
   finished_at: string | null;
 };
+
+export type AuditOutcome = "success" | "failure" | "denied";
+export type AuditItem = {
+  id: string;
+  occurred_at: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  action: string;
+  outcome: AuditOutcome;
+  resource_type: string | null;
+  resource_id: string | null;
+  resource_name: string | null;
+  project_id: string | null;
+  project_name: string | null;
+};
+export type AuditDetail = AuditItem & {
+  request_id: string | null;
+  source_ip: string | null;
+  metadata: Record<string, unknown>;
+};
+export type AuditList = { items: AuditItem[]; total: number; limit: number; offset: number };
